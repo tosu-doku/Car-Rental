@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as carsController from '../controllers/carsController.js';
 import { asyncHandler } from '../handlers/asyncHandler.js';
+import { authenticate, requireRoles } from '../middleware/auth.js';
 import {
   bodyTypes,
   carColors,
   carStatuses,
   idParamSchema,
   validate,
+  dateTimeSchema,
 } from '../middleware/validate.js';
 
 const router = Router();
@@ -19,8 +21,7 @@ const vinSchema = z
   .length(17)
   .transform((value) => value.toUpperCase());
 
-const carCreateSchema = z.object({
-  modelId: z.coerce.number().int().positive(),
+const carCreateBase = {
   branchId: z.coerce.number().int().positive().optional().nullable(),
   status: z.enum(carStatuses).default('Available'),
   color: z.enum(carColors),
@@ -32,9 +33,26 @@ const carCreateSchema = z.object({
   carEngine: z.coerce.number().nonnegative(),
   horsePower: z.coerce.number().int().positive(),
   bodyType: z.enum(bodyTypes),
+  imageUrl: z.string().trim().max(2048).optional().nullable(),
+};
+
+const carCreateWithModelIdSchema = z.object({
+  modelId: z.coerce.number().int().positive(),
+  ...carCreateBase,
 });
 
-const carUpdateSchema = carCreateSchema
+const carCreateWithBrandModelSchema = z.object({
+  brandName: z.string().trim().min(1),
+  country: z.string().trim().min(1),
+  modelName: z.string().trim().min(1),
+  hourlyCost: z.coerce.number().positive(),
+  modelDescription: z.string().trim().optional().nullable(),
+  ...carCreateBase,
+});
+
+const carCreateSchema = z.union([carCreateWithModelIdSchema, carCreateWithBrandModelSchema]);
+
+const carUpdateSchema = carCreateWithModelIdSchema
   .partial()
   .extend({
     isActive: z.coerce.boolean().optional(),
@@ -55,27 +73,40 @@ const carQuerySchema = z.object({
   minHourlyCost: z.coerce.number().nonnegative().optional(),
   maxHourlyCost: z.coerce.number().nonnegative().optional(),
   availableOnly: z.coerce.boolean().optional(),
+  startDate: dateTimeSchema.optional(),
+  expectedEndDate: dateTimeSchema.optional(),
 });
 
 router.get('/', validate({ query: carQuerySchema }), asyncHandler(carsController.listCars));
 router.get('/available', asyncHandler(carsController.listAvailableCars));
+router.get('/popular', asyncHandler(carsController.listPopularCars));
 router.get('/:id', validate({ params: idParamSchema }), asyncHandler(carsController.getCar));
 router.get(
   '/:id/rents',
   validate({ params: idParamSchema }),
   asyncHandler(carsController.listCarRents),
 );
-router.post('/', validate({ body: carCreateSchema }), asyncHandler(carsController.createCar));
+router.post(
+  '/upload-image',
+  authenticate,
+  requireRoles('Worker', 'Manager', 'Admin'),
+  asyncHandler(carsController.uploadImage),
+);
+router.post('/', authenticate, requireRoles('Manager', 'Admin'), validate({ body: carCreateSchema }), asyncHandler(carsController.createCar));
 router.patch(
   '/:id',
+  authenticate,
+  requireRoles('Manager', 'Admin'),
   validate({ params: idParamSchema, body: carUpdateSchema }),
   asyncHandler(carsController.updateCar),
 );
 router.patch(
   '/:id/status',
+  authenticate,
+  requireRoles('Worker', 'Manager', 'Admin'),
   validate({ params: idParamSchema, body: statusSchema }),
   asyncHandler(carsController.updateCarStatus),
 );
-router.delete('/:id', validate({ params: idParamSchema }), asyncHandler(carsController.deleteCar));
+router.delete('/:id', authenticate, requireRoles('Manager', 'Admin'), validate({ params: idParamSchema }), asyncHandler(carsController.deleteCar));
 
 export default router;

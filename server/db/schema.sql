@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS Cars (
     carEngine DECIMAL(3, 1) NOT NULL CHECK (carEngine >= 0),
     horsePower INTEGER NOT NULL CHECK (horsePower > 0),
     bodyType BodyTypes NOT NULL,
+    imageUrl VARCHAR(2048),
     isActive BOOLEAN NOT NULL DEFAULT TRUE,
     createdAt TIMESTAMP NOT NULL DEFAULT NOW(),
     updatedAt TIMESTAMP NOT NULL DEFAULT NOW()
@@ -161,6 +162,7 @@ CREATE TABLE IF NOT EXISTS Users (
     lastName VARCHAR(255) NOT NULL,
     phone VARCHAR(15) NOT NULL UNIQUE CHECK (phone ~ '^\+?[0-9]{9,15}$'),
     role Roles NOT NULL DEFAULT 'Customer',
+    branchId INTEGER REFERENCES Branches (branchId) ON DELETE SET NULL ON UPDATE CASCADE,
     driverLicenseNumber VARCHAR(64) UNIQUE,
     driverLicenseExpiresAt DATE,
     birthDate DATE CHECK (birthDate IS NULL OR birthDate <= CURRENT_DATE),
@@ -245,9 +247,35 @@ CREATE INDEX IF NOT EXISTS idx_models_brand_id ON Models (brandId);
 CREATE INDEX IF NOT EXISTS idx_cars_model_id ON Cars (modelId);
 CREATE INDEX IF NOT EXISTS idx_cars_status ON Cars (status);
 CREATE INDEX IF NOT EXISTS idx_cars_branch_id ON Cars (branchId);
+CREATE INDEX IF NOT EXISTS idx_users_branch_id ON Users (branchId);
 CREATE INDEX IF NOT EXISTS idx_rents_user_id ON Rents (userId);
 CREATE INDEX IF NOT EXISTS idx_rents_car_id ON Rents (carId);
 CREATE INDEX IF NOT EXISTS idx_rents_status ON Rents (status);
 CREATE INDEX IF NOT EXISTS idx_rents_dates ON Rents (startDate, expectedEndDate, endDate);
 CREATE INDEX IF NOT EXISTS idx_transactions_rent_id ON TransactionHistory (rentId);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON TransactionHistory (status);
+
+-- Seed default branch
+INSERT INTO Branches (branchName, address, phone, email, isActive)
+VALUES ('Warszawa Centrum', 'ul. Marszalkowska 1, Warszawa', '123456789', 'warszawa@harvestmotion.pl', TRUE)
+ON CONFLICT DO NOTHING;
+
+-- Seed test admin account for local development
+INSERT INTO Users (email, passwordHash, firstName, lastName, phone, role, isActive)
+VALUES (
+    'admin@admin.com',
+    '$2b$12$NxzSGFQyOVTdXoVu123a7uZL5Vh1JJU2DQTTGMzP0KU7wNAjP1blG',
+    'Admin',
+    'Test',
+    '+48000000001',
+    'Admin',
+    TRUE
+)
+ON CONFLICT (email) DO UPDATE
+SET
+    passwordHash = EXCLUDED.passwordHash,
+    firstName = EXCLUDED.firstName,
+    lastName = EXCLUDED.lastName,
+    role = EXCLUDED.role,
+    isActive = TRUE,
+    updatedAt = NOW();
